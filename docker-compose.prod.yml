@@ -20,7 +20,7 @@ services:
     container_name: assessoria-app
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-80}:3001"
+      - "${APP_PORT:-38472}:3001"
     environment:
       NODE_ENV: production
       PORT: 3001

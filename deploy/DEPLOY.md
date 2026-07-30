@@ -4,7 +4,20 @@ Guia para subir o sistema Assessoria Cobranças em um servidor Linux (Ubuntu/Deb
 
 **Domínio de produção:** `consultoria.redobrai.online`
 
-## Início rápido (na VPS)
+## Mapa de portas
+
+| Serviço | Ambiente | Porta host | Porta interna | Arquivo / variável |
+|---------|----------|------------|---------------|---------------------|
+| API (backend) | dev | **47291** | — | `backend/.env` → `PORT` |
+| Frontend (Vite) | dev | **51837** | — | `frontend/vite.config.ts` |
+| PostgreSQL | dev | **55432** | 5432 | `docker-compose.yml` |
+| App (produção) | prod | **38472** | 3001 | `.env` → `APP_PORT` |
+| Caddy (HTTPS) | prod | 80, 443 | 80, 443 | `deploy/docker-compose.caddy.yml` |
+| Nginx (reverse proxy) | prod | 80, 443 | — | proxy → `127.0.0.1:38472` |
+
+> **Caddy e nginx** permanecem nas portas **80/443** do host (obrigatório para Let's Encrypt). A app Docker **nunca** usa a porta 80 — fica em **38472** no host ou só na rede interna Docker (com overlay Caddy).
+
+---
 
 ```bash
 cd /opt/assessoria
@@ -15,7 +28,7 @@ curl -s https://consultoria.redobrai.online/api/health
 docker compose -f docker-compose.prod.yml -f deploy/docker-compose.caddy.yml exec app node backend/dist/scripts/import-csv.js
 ```
 
-Sem domínio (só IP): use `docker compose -f docker-compose.prod.yml up -d --build` com `APP_PORT=80` no `.env`.
+Sem domínio (só IP): use `docker compose -f docker-compose.prod.yml up -d --build` com `APP_PORT=38472` no `.env`.
 
 ---
 
@@ -84,10 +97,10 @@ Defina uma senha forte em `POSTGRES_PASSWORD`. Para deploy com Caddy (HTTPS), **
 ```env
 POSTGRES_USER=assessoria
 POSTGRES_PASSWORD=SuaSenhaForte123!
-APP_PORT=8080
+APP_PORT=38472
 ```
 
-> `APP_PORT=8080` é usado apenas se você expuser a app diretamente (sem overlay Caddy). Com `deploy/docker-compose.caddy.yml`, a app não publica porta no host; o Caddy faz o proxy para `app:3001`.
+> `APP_PORT=38472` é usado apenas se você expuser a app diretamente (sem overlay Caddy). Com `deploy/docker-compose.caddy.yml`, a app não publica porta no host; o Caddy faz o proxy para `app:3001`.
 
 ---
 
@@ -125,7 +138,7 @@ Use quando a VPS **já tem nginx** na porta 80 (evita conflito com `deploy/docke
 
 ```bash
 cd /opt/assessoria
-# .env: APP_PORT=8080
+# .env: APP_PORT=38472
 docker compose -f docker-compose.prod.yml up -d --build
 sudo cp deploy/nginx-consultoria.conf /etc/nginx/sites-available/consultoria.redobrai.online
 sudo ln -sf /etc/nginx/sites-available/consultoria.redobrai.online /etc/nginx/sites-enabled/
@@ -143,11 +156,11 @@ Para testes rápidos sem HTTPS:
 
 ```bash
 cd /opt/assessoria
-# no .env: APP_PORT=80
+# no .env: APP_PORT=38472
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Acesse: `http://IP-DA-VPS`
+Acesse: `http://IP-DA-VPS:38472`
 
 ---
 
@@ -172,11 +185,11 @@ Se preferir Caddy instalado no sistema em vez do container:
 ```bash
 sudo apt install -y caddy
 sudo cp /opt/assessoria/deploy/Caddyfile /etc/caddy/Caddyfile
-# Edite para usar localhost:8080 em vez de app:3001:
-sudo sed -i 's/app:3001/localhost:8080/' /etc/caddy/Caddyfile
+# Edite para usar localhost:38472 em vez de app:3001:
+sudo sed -i 's/app:3001/localhost:38472/' /etc/caddy/Caddyfile
 ```
 
-No `.env`: `APP_PORT=8080`
+No `.env`: `APP_PORT=38472`
 
 ```bash
 cd /opt/assessoria
@@ -276,13 +289,13 @@ docker compose -f docker-compose.prod.yml -f deploy/docker-compose.caddy.yml up 
 curl -s https://consultoria.redobrai.online/api/health
 ```
 
-> Com overlay Caddy, **não** publique a app na porta 80 do host. No `.env`, use `APP_PORT=8080` (ou omita — o overlay Caddy reseta as portas da app).
+> Com overlay Caddy, **não** publique a app na porta 80 do host. No `.env`, use `APP_PORT=38472` (ou omita — o overlay Caddy reseta as portas da app).
 
 ---
 
 #### Opção B — Manter nginx no host como reverse proxy (recomendado em VPS que já usa nginx)
 
-Use esta opção quando nginx (ou outro proxy) já gerencia outros sites na mesma VPS. A app Docker fica em `localhost:8080`; o nginx termina HTTPS na porta 80/443.
+Use esta opção quando nginx (ou outro proxy) já gerencia outros sites na mesma VPS. A app Docker fica em `localhost:38472`; o nginx termina HTTPS na porta 80/443.
 
 ```bash
 cd ~/conultorialuxus   # ajuste o caminho se necessário
@@ -290,15 +303,15 @@ cd ~/conultorialuxus   # ajuste o caminho se necessário
 # Pare o overlay Caddy (se tentou antes)
 docker compose -f docker-compose.prod.yml -f deploy/docker-compose.caddy.yml down 2>/dev/null || true
 
-# .env: app exposta só em 8080 no host
-grep -q '^APP_PORT=' .env && sed -i 's/^APP_PORT=.*/APP_PORT=8080/' .env || echo 'APP_PORT=8080' >> .env
+# .env: app exposta só em 38472 no host
+grep -q '^APP_PORT=' .env && sed -i 's/^APP_PORT=.*/APP_PORT=38472/' .env || echo 'APP_PORT=38472' >> .env
 grep -q '^POSTGRES_PASSWORD=' .env || { echo 'Defina POSTGRES_PASSWORD no .env'; exit 1; }
 
 # Suba SEM overlay Caddy
 docker compose -f docker-compose.prod.yml up -d --build
 
 # Confirme que a app responde localmente
-curl -s http://127.0.0.1:8080/api/health
+curl -s http://127.0.0.1:38472/api/health
 
 # Instale o site nginx
 sudo cp deploy/nginx-consultoria.conf /etc/nginx/sites-available/consultoria.redobrai.online
@@ -313,9 +326,9 @@ sudo certbot --nginx -d consultoria.redobrai.online
 curl -s https://consultoria.redobrai.online/api/health
 ```
 
-Arquivo de referência: `deploy/nginx-consultoria.conf` (proxy `consultoria.redobrai.online` → `127.0.0.1:8080`).
+Arquivo de referência: `deploy/nginx-consultoria.conf` (proxy `consultoria.redobrai.online` → `127.0.0.1:38472`).
 
-Para **Apache** em vez de nginx, crie um VirtualHost equivalente apontando `ProxyPass / http://127.0.0.1:8080/` e use `certbot --apache`.
+Para **Apache** em vez de nginx, crie um VirtualHost equivalente apontando `ProxyPass / http://127.0.0.1:38472/` e use `certbot --apache`.
 
 ---
 
@@ -323,13 +336,13 @@ Para **Apache** em vez de nginx, crie um VirtualHost equivalente apontando `Prox
 
 Só use para teste rápido. Let's Encrypt exige portas 80/443 no domínio público; HTTPS automático não funcionará sem ajustes avançados de DNS.
 
-Exemplo (Caddy em 8080/8443 — **sem HTTPS válido para visitantes**):
+Exemplo (Caddy em 41807/52913 — **sem HTTPS válido para visitantes**):
 
 ```yaml
 # deploy/docker-compose.caddy-alt-ports.yml (não incluído — apenas referência)
 ports:
-  - "8080:80"
-  - "8443:443"
+  - "41807:80"
+  - "52913:443"
 ```
 
 Prefira sempre Opção A ou B para `https://consultoria.redobrai.online` funcionar corretamente.

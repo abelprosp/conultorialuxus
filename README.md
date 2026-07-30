@@ -36,14 +36,14 @@ npm run dev
 ```
 
 Acesse:
-- **Frontend:** http://localhost:5173
-- **API:** http://localhost:3001/api/health
+- **Frontend:** http://localhost:51837
+- **API:** http://localhost:47291/api/health
 
 ## Comandos úteis
 
 | Comando | Descrição |
 |---------|-----------|
-| `npm run dev` | Inicia backend (3001) e frontend (5173) |
+| `npm run dev` | Inicia backend (47291) e frontend (51837) |
 | `npm run db:up` | Sobe PostgreSQL via Docker |
 | `npm run db:down` | Para o container PostgreSQL |
 | `npm run db:migrate` | Cria/atualiza schema do banco |
@@ -130,7 +130,7 @@ Na interface, o status pode ser atualizado manualmente para `em_processamento`, 
 
 ## Credenciais PostgreSQL (Docker)
 
-- Host: `localhost:5432`
+- Host: `localhost:55432`
 - Database: `assessoria_cobrancas`
 - User: `assessoria`
 - Password: `assessoria`
