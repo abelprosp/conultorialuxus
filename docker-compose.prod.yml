@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: assessoria-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-assessoria}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-altere-esta-senha-no-env}
+      POSTGRES_DB: assessoria_cobrancas
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-assessoria} -d assessoria_cobrancas"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    container_name: assessoria-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-80}:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-assessoria}:${POSTGRES_PASSWORD}@postgres:5432/assessoria_cobrancas
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data:ro
+
+volumes:
+  postgres_data:

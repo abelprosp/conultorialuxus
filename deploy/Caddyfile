@@ -1,0 +1,3 @@
+consultoria.redobrai.online {
+	reverse_proxy app:3001
+}
