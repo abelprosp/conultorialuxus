@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import clientesRouter from './routes/clientes.js';
 import solicitacoesRouter from './routes/solicitacoes.js';
 import dashboardRouter from './routes/dashboard.js';
+import { checkDbHealth } from './db.js';
 
 dotenv.config();
 
@@ -43,6 +44,35 @@ try {
     res.json({ status: 'ok', service: 'assessoria-cobrancas' });
   });
 
+  app.get('/api/health/db', async (_req, res) => {
+    const health = await checkDbHealth();
+    if (!health.connected) {
+      res.status(503).json({
+        status: 'error',
+        db: 'disconnected',
+        migration_status: process.env.MIGRATION_STATUS ?? 'unknown',
+        hint: 'Confira DATABASE_URL e conecte o plugin Postgres no Railway',
+      });
+      return;
+    }
+    if (!health.schemaReady) {
+      res.status(503).json({
+        status: 'error',
+        db: 'connected',
+        schema: 'missing',
+        migration_status: process.env.MIGRATION_STATUS ?? 'unknown',
+        hint: 'Rode: railway run node backend/dist/scripts/migrate.js',
+      });
+      return;
+    }
+    res.json({
+      status: 'ok',
+      db: 'connected',
+      schema: 'ready',
+      migration_status: process.env.MIGRATION_STATUS ?? 'unknown',
+    });
+  });
+
   app.use('/api/clientes', clientesRouter);
   app.use('/api/solicitacoes', solicitacoesRouter);
   app.use('/api/dashboard', dashboardRouter);
@@ -70,11 +100,24 @@ try {
   }
 
   console.log(
-    `[startup] PORT=${PORT} HOST=${HOST} NODE_ENV=${process.env.NODE_ENV ?? 'unset'} DATABASE_URL=${process.env.DATABASE_URL ? 'set' : 'unset'}`
+    `[startup] PORT=${PORT} HOST=${HOST} NODE_ENV=${process.env.NODE_ENV ?? 'unset'} DATABASE_URL=${process.env.DATABASE_URL ? 'set' : 'unset'} MIGRATION_STATUS=${process.env.MIGRATION_STATUS ?? 'unknown'}`
   );
 
-  app.listen(PORT, HOST, () => {
+  app.listen(PORT, HOST, async () => {
     console.log(`API rodando em http://${HOST}:${PORT}`);
+
+    if (process.env.DATABASE_URL) {
+      const health = await checkDbHealth();
+      if (health.connected && health.schemaReady) {
+        console.log('[startup] Banco OK — schema pronto');
+      } else if (health.connected) {
+        console.error('[startup] Banco conectado mas schema ausente — rode migrations');
+      } else {
+        console.error('[startup] Banco indisponível:', health.error ?? 'erro desconhecido');
+      }
+    } else {
+      console.error('[startup] DATABASE_URL ausente — rotas que usam Postgres falharão');
+    }
   }).on('error', (err) => {
     console.error('[fatal] falha ao abrir porta:', err);
     process.exit(1);

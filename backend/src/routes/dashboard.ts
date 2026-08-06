@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { query } from '../db.js';
+import { logDbError } from '../utils/db-error.js';
 import type { DashboardStats } from '../types.js';
 
 const router = Router();
@@ -53,7 +54,7 @@ router.get('/', async (_req, res) => {
 
     res.json(stats);
   } catch (err) {
-    console.error(err);
+    logDbError('GET /api/dashboard', err);
     res.status(500).json({ error: 'Erro ao carregar dashboard' });
   }
 });

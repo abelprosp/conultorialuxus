@@ -12,7 +12,7 @@ O deploy correto usa **UM único serviço** com o `Dockerfile` na **raiz do repo
 |----------|---------------|-------|
 | **2 serviços** (App + Frontend) | Backend “ok”, frontend falha, healthcheck `/api/health` timeout | O serviço **Frontend** não tem API — o probe falha |
 | **Root Directory = `frontend`** | Build Nixpacks ou estático sem `/api/health` | Railway ignora o monorepo e o Dockerfile da raiz |
-| **1 serviço correto** | `/api/health` → 200, `/` → HTML | Dockerfile na raiz, `NODE_ENV=production` |
+| **1 serviço correto** | `/api/health` → 200, `/api/health/db` → 200, `/` → HTML | Dockerfile na raiz, `DATABASE_URL` conectado |
 
 ### Apagar serviço frontend separado (se existir)
 
@@ -49,6 +49,7 @@ API rodando em http://0.0.0.0:...
 Teste a URL pública:
 
 - `https://SEU-DOMINIO.up.railway.app/api/health` → `{"status":"ok",...}`
+- `https://SEU-DOMINIO.up.railway.app/api/health/db` → `{"status":"ok","db":"connected","schema":"ready",...}`
 - `https://SEU-DOMINIO.up.railway.app/` → página HTML do React
 
 Se `exists=false` nos logs, o build Docker não gerou o frontend — confira Root Directory vazio e redeploy.
@@ -129,16 +130,23 @@ Abra o serviço da aplicação → **Settings**:
 2. Aguarde o build Docker (backend + frontend)
 3. **Settings** → **Networking** → **Generate Domain**
 4. Teste: `https://SEU-DOMINIO.up.railway.app/api/health` → `{"status":"ok",...}`
+5. Teste banco: `/api/health/db` → schema ready (se 503, veja [Erro de banco](#erro-de-banco--migrations-rotas-api--500))
 
 ### 5. Importar CSV (opcional)
 
-No serviço App → **Shell** ou one-off:
+Somente após `/api/health/db` retornar `schema: ready`.
+
+**Via CLI:**
+
+```bash
+railway run node backend/dist/scripts/import-csv.js
+```
+
+**Via Shell** no serviço App:
 
 ```bash
 node backend/dist/scripts/import-csv.js
 ```
-
-O arquivo `data/historico-solicitacoes.csv` já está na imagem Docker.
 
 ---
 
@@ -242,7 +250,7 @@ Attempt #1-6 failed with service unavailable
 
 | Causa | Sintoma | Correção |
 |-------|---------|----------|
-| Migrations bloqueavam o listen | Build OK, health timeout | Migrations em **background** (`entrypoint.sh`) |
+| Migrations bloqueavam o listen | Build OK, health timeout | Migrations **síncronas** antes do app (`entrypoint.sh`, timeout 120s) |
 | **PORT divergente** | Logs: entrypoint `3001`, Node `47291` | `export PORT` no entrypoint + fallback `8080` em produção (`index.ts`) |
 | `node_modules` ausente no runner | Crash: `Cannot find package 'express'` | Dockerfile copia `node_modules` do builder (após `npm prune --omit=dev`) |
 | CRLF no `entrypoint.sh` | `exec format error` ou shebang quebrado | `.gitattributes` força LF em `*.sh` |
@@ -250,9 +258,9 @@ Attempt #1-6 failed with service unavailable
 
 **Comportamento esperado após o fix:**
 
-1. App sobe **imediatamente**; migrations rodam em **background** (se `DATABASE_URL` definida)
-2. `/api/health` **não depende** do banco
-3. Logs: `=== Startup ===`, `PORT=...` (mesmo valor em entrypoint e `[startup]`), `API rodando em http://0.0.0.0:...`
+1. App aguarda Postgres e roda migrations **antes** de abrir a porta (até 120s)
+2. `/api/health` **não depende** do banco; `/api/health/db` diagnostica conexão e schema
+3. Logs: `=== Startup ===`, `MIGRATION_STATUS=...`, `[startup] Banco OK — schema pronto`
 
 **Checklist se ainda falhar:**
 
@@ -292,10 +300,108 @@ docker run --rm -p 8080:8080 \
 curl http://localhost:8080/api/health
 ```
 
-### Erro de banco / migrations
+### Erro de banco / migrations (rotas `/api/*` → 500)
 
-- `DATABASE_URL` deve apontar para o Postgres do Railway (host interno, não `localhost`)
-- Logs do App na primeira subida: `Executando migrations...`
+Sintoma: `/api/health` → 200, mas `/api/dashboard`, `/api/clientes`, etc. → 500.
+
+**Diagnóstico rápido:**
+
+```bash
+curl https://SEU-DOMINIO.up.railway.app/api/health/db
+```
+
+| Resposta | Significado | Ação |
+|----------|-------------|------|
+| `db: disconnected` | App não conecta ao Postgres | Conectar plugin Postgres e definir `DATABASE_URL` |
+| `schema: missing` | Conectou, mas tabelas não existem | Rodar migration manualmente (abaixo) |
+| `status: ok` | Banco OK | Se ainda houver 500, veja logs do App |
+
+**Causas comuns:**
+
+| Causa | Sintoma nos logs |
+|-------|------------------|
+| **`DATABASE_URL` ausente** no serviço App | `DATABASE_URL unset`, `MIGRATION_STATUS=skipped` |
+| **Postgres não conectado** ao App | `[db] ... connection refused` ou SSL error |
+| **Migrations falharam** (SSL, timeout) | `MIGRATION_STATUS=failed`, `[migrate] conexão tentativa N/30` |
+| **SSL obrigatório** (Railway Postgres) | `no pg_hba.conf entry` — corrigido automaticamente para hosts `*.railway.*` |
+
+### Conectar Postgres ao serviço App (obrigatório)
+
+1. No canvas do projeto → **+ New** → **Database** → **PostgreSQL** (se ainda não existir)
+2. Clique no serviço **App** (não no Postgres) → aba **Variables**
+3. **+ New Variable** → **Add Reference**:
+   - Serviço: **Postgres**
+   - Variável: `DATABASE_URL`
+4. Ou cole manualmente: valor de **Postgres → Variables → DATABASE_URL**
+5. **Redeploy** o serviço App após salvar
+
+Formato esperado (host interno Railway):
+
+```
+postgresql://postgres:****@postgres.railway.internal:5432/railway
+```
+
+> Use `${{Postgres.DATABASE_URL}}` ou **Variable Reference** — não use `localhost`.
+
+### Rodar migrations manualmente
+
+Após conectar o Postgres, se `/api/health/db` mostrar `schema: missing`:
+
+**Via CLI (recomendado):**
+
+```bash
+# Instale: npm i -g @railway/cli && railway login
+railway link          # selecione o projeto
+railway run node backend/dist/scripts/migrate.js
+```
+
+**Via Shell no dashboard:**
+
+1. Serviço App → aba **Shell** (ou one-off command)
+2. Execute:
+
+```bash
+node backend/dist/scripts/migrate.js
+```
+
+Logs esperados:
+
+```
+[migrate] DATABASE_URL=set host=postgres.railway.internal
+[migrate] Conexão OK (tentativa 1/30)
+[migrate] Migration concluída — schema verificado.
+```
+
+### Importar CSV (opcional, após migration)
+
+```bash
+railway run node backend/dist/scripts/import-csv.js
+```
+
+Ou no Shell do App:
+
+```bash
+node backend/dist/scripts/import-csv.js
+```
+
+O arquivo `data/historico-solicitacoes.csv` já está na imagem Docker.
+
+### Comportamento do startup (após fix)
+
+1. `entrypoint.sh` roda **migrations de forma síncrona** (até 120s) **antes** de subir a API
+2. `/api/health` — não depende do banco (healthcheck Railway)
+3. `/api/health/db` — diagnóstico de conexão + schema
+4. Logs: `MIGRATION_STATUS=ok|failed|skipped` e `[startup] Banco OK — schema pronto`
+
+**Checklist:**
+
+| Verificação | Esperado |
+|-------------|----------|
+| Plugin Postgres | Existe no canvas |
+| `DATABASE_URL` no App | Referência ao Postgres (não vazio) |
+| Logs de startup | `MIGRATION_STATUS=ok` |
+| `/api/health/db` | `{"status":"ok","db":"connected","schema":"ready",...}` |
+| `/api/clientes` | `[]` ou lista (não 500) |
 
 ### Quero só o frontend estático?
 

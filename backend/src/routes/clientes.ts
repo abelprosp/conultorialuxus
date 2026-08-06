@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { query } from '../db.js';
+import { logDbError } from '../utils/db-error.js';
 import type { ClienteComConfig, FiltrosSolicitacao, SolicitacaoCobranca } from '../types.js';
 import { solicitacaoSelectQuery } from './solicitacoes-select.js';
 import {
@@ -59,7 +60,7 @@ router.post('/', async (req, res) => {
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error(err);
+    logDbError('POST /api/clientes', err);
     res.status(500).json({ error: 'Erro ao criar cliente' });
   }
 });
@@ -130,7 +131,7 @@ router.patch('/:id', async (req, res) => {
 
     res.json(cliente.rows[0]);
   } catch (err) {
-    console.error(err);
+    logDbError('PUT /api/clientes/:id', err);
     res.status(500).json({ error: 'Erro ao atualizar cliente' });
   }
 });
@@ -173,7 +174,7 @@ router.get('/', async (req, res) => {
 
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
+    logDbError('GET /api/clientes', err);
     res.status(500).json({ error: 'Erro ao listar clientes' });
   }
 });
@@ -205,7 +206,7 @@ router.get('/:id', async (req, res) => {
 
     res.json({ ...cliente.rows[0], solicitacoes: solicitacoes.rows });
   } catch (err) {
-    console.error(err);
+    logDbError('GET /api/clientes/:id', err);
     res.status(500).json({ error: 'Erro ao buscar cliente' });
   }
 });

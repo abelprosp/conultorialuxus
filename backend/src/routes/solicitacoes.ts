@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { query } from '../db.js';
+import { logDbError } from '../utils/db-error.js';
 import type { FiltrosSolicitacao, SolicitacaoCobranca, status_cobranca } from '../types.js';
 import { solicitacaoSelectQuery } from './solicitacoes-select.js';
 import {
@@ -163,7 +164,7 @@ router.post('/', async (req, res) => {
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error(err);
+    logDbError('POST /api/solicitacoes', err);
     res.status(500).json({ error: 'Erro ao criar solicitação' });
   }
 });
@@ -215,7 +216,7 @@ router.get('/', async (req, res) => {
       limit: filtros.limit,
     });
   } catch (err) {
-    console.error(err);
+    logDbError('GET /api/solicitacoes', err);
     res.status(500).json({ error: 'Erro ao listar solicitações' });
   }
 });
@@ -244,7 +245,7 @@ router.get('/filtros', async (_req, res) => {
       statuses: statuses.rows.map((r) => r.status),
     });
   } catch (err) {
-    console.error(err);
+    logDbError('GET /api/solicitacoes/filtros', err);
     res.status(500).json({ error: 'Erro ao carregar filtros' });
   }
 });
@@ -275,7 +276,7 @@ router.patch('/:id/status', async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error(err);
+    logDbError('PATCH /api/solicitacoes/:id/status', err);
     res.status(500).json({ error: 'Erro ao atualizar status' });
   }
 });
@@ -295,7 +296,7 @@ router.get('/:id', async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (err) {
-    console.error(err);
+    logDbError('GET /api/solicitacoes/:id', err);
     res.status(500).json({ error: 'Erro ao buscar solicitação' });
   }
 });
