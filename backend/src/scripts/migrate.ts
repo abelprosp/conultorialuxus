@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { pool } from '../db.js';
+import { assertDatabaseUrl, closePool, getPool, resolveDatabaseUrl } from '../db.js';
 import { logDbError } from '../utils/db-error.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -18,7 +18,7 @@ async function waitForDb(): Promise<void> {
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      await pool.query('SELECT 1');
+      await getPool().query('SELECT 1');
       console.log(`[migrate] Conexão OK (tentativa ${attempt}/${MAX_ATTEMPTS})`);
       return;
     } catch (err) {
@@ -32,18 +32,18 @@ async function waitForDb(): Promise<void> {
 }
 
 async function verifySchema(): Promise<boolean> {
-  const result = await pool.query<{ clientes: string | null }>(
+  const result = await getPool().query<{ clientes: string | null }>(
     `SELECT to_regclass('public.clientes') AS clientes`
   );
   return result.rows[0]?.clientes !== null;
 }
 
 export async function runMigration(): Promise<void> {
-  const dbHost = process.env.DATABASE_URL?.match(/@([^:/]+)/)?.[1] ?? 'unknown';
+  const dbHost = resolveDatabaseUrl()?.match(/@([^:/]+)/)?.[1] ?? 'unknown';
 
-  console.log(`[migrate] DATABASE_URL=${process.env.DATABASE_URL ? 'set' : 'unset'} host=${dbHost}`);
+  console.log(`[migrate] DATABASE_URL=${resolveDatabaseUrl() ? 'set' : 'unset'} host=${dbHost}`);
 
-  if (!process.env.DATABASE_URL) {
+  if (!resolveDatabaseUrl()) {
     throw new Error('DATABASE_URL não definida — não é possível executar migrations');
   }
 
@@ -53,7 +53,7 @@ export async function runMigration(): Promise<void> {
   const sql = readFileSync(schemaPath, 'utf-8');
 
   console.log(`[migrate] Executando ${schemaPath}...`);
-  await pool.query(sql);
+  await getPool().query(sql);
 
   const ready = await verifySchema();
   if (!ready) {
@@ -64,10 +64,11 @@ export async function runMigration(): Promise<void> {
 }
 
 async function main() {
+  assertDatabaseUrl('migrate');
   try {
     await runMigration();
   } finally {
-    await pool.end();
+    await closePool();
   }
 }
 

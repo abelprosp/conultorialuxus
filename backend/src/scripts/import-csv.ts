@@ -2,8 +2,7 @@ import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { parse } from 'csv-parse/sync';
-import dotenv from 'dotenv';
-import { pool } from '../db.js';
+import { assertDatabaseUrl, closePool, getPool, resolveDatabaseUrl } from '../db.js';
 import {
   normalizeCnpj,
   normalizeProductType,
@@ -16,8 +15,6 @@ import {
   motivoToStatus,
   normalizeEmpresaEmissora,
 } from '../utils/parsers.js';
-
-dotenv.config();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -41,10 +38,10 @@ async function getOrCreate<T extends { id: number }>(
   column: string,
   value: string
 ): Promise<number> {
-  const existing = await pool.query<T>(`SELECT id FROM ${table} WHERE ${column} = $1`, [value]);
+  const existing = await getPool().query<T>(`SELECT id FROM ${table} WHERE ${column} = $1`, [value]);
   if (existing.rows[0]) return existing.rows[0].id;
 
-  const inserted = await pool.query<T>(
+  const inserted = await getPool().query<T>(
     `INSERT INTO ${table} (${column}) VALUES ($1) RETURNING id`,
     [value]
   );
@@ -52,19 +49,19 @@ async function getOrCreate<T extends { id: number }>(
 }
 
 async function getOrCreateTipoProduto(nome: string, nomeNormalizado: string): Promise<number> {
-  const existing = await pool.query<{ id: number }>(
+  const existing = await getPool().query<{ id: number }>(
     'SELECT id FROM tipos_produto WHERE nome_normalizado = $1',
     [nomeNormalizado]
   );
   if (existing.rows[0]) {
-    await pool.query('UPDATE tipos_produto SET nome = $1 WHERE id = $2 AND nome <> $1', [
+    await getPool().query('UPDATE tipos_produto SET nome = $1 WHERE id = $2 AND nome <> $1', [
       nome,
       existing.rows[0].id,
     ]);
     return existing.rows[0].id;
   }
 
-  const inserted = await pool.query<{ id: number }>(
+  const inserted = await getPool().query<{ id: number }>(
     'INSERT INTO tipos_produto (nome, nome_normalizado) VALUES ($1, $2) RETURNING id',
     [nome, nomeNormalizado]
   );
@@ -73,12 +70,12 @@ async function getOrCreateTipoProduto(nome: string, nomeNormalizado: string): Pr
 
 async function getOrCreateCliente(razaoSocial: string, cnpj: string | null): Promise<number> {
   if (cnpj) {
-    const byCnpj = await pool.query<{ id: number }>(
+    const byCnpj = await getPool().query<{ id: number }>(
       'SELECT id FROM clientes WHERE cnpj = $1',
       [cnpj]
     );
     if (byCnpj.rows[0]) {
-      await pool.query(
+      await getPool().query(
         'UPDATE clientes SET razao_social = $1, updated_at = NOW() WHERE id = $2',
         [razaoSocial, byCnpj.rows[0].id]
       );
@@ -86,13 +83,13 @@ async function getOrCreateCliente(razaoSocial: string, cnpj: string | null): Pro
     }
   }
 
-  const byName = await pool.query<{ id: number }>(
+  const byName = await getPool().query<{ id: number }>(
     'SELECT id FROM clientes WHERE razao_social = $1 AND (cnpj IS NULL OR cnpj = $2)',
     [razaoSocial, cnpj ?? '']
   );
   if (byName.rows[0]) {
     if (cnpj) {
-      await pool.query('UPDATE clientes SET cnpj = $1, updated_at = NOW() WHERE id = $2', [
+      await getPool().query('UPDATE clientes SET cnpj = $1, updated_at = NOW() WHERE id = $2', [
         cnpj,
         byName.rows[0].id,
       ]);
@@ -100,7 +97,7 @@ async function getOrCreateCliente(razaoSocial: string, cnpj: string | null): Pro
     return byName.rows[0].id;
   }
 
-  const inserted = await pool.query<{ id: number }>(
+  const inserted = await getPool().query<{ id: number }>(
     'INSERT INTO clientes (razao_social, cnpj) VALUES ($1, $2) RETURNING id',
     [razaoSocial, cnpj]
   );
@@ -152,7 +149,7 @@ async function importCsv(csvPath: string) {
       : null;
 
     const categoriaCodigo = categorizeMotivo(motivo);
-    const catResult = await pool.query<{ id: number }>(
+    const catResult = await getPool().query<{ id: number }>(
       'SELECT id FROM categorias_motivo WHERE codigo = $1',
       [categoriaCodigo]
     );
@@ -166,7 +163,7 @@ async function importCsv(csvPath: string) {
     const email = row['Endereço de e-mail']?.trim() || null;
     const observacoes = row['Obsevações']?.trim() || null;
 
-    await pool.query(
+    await getPool().query(
       `INSERT INTO solicitacoes_cobranca (
         cliente_id, carimbo_data_hora, carimbo_original,
         valor_boleto, valor_boleto_original,
@@ -195,7 +192,7 @@ async function importCsv(csvPath: string) {
       ]
     );
 
-    await pool.query(
+    await getPool().query(
       `INSERT INTO clientes_config (cliente_id, tipo_produto_id, empresa_emissora_id, email_contato, observacoes_padrao, updated_at)
        VALUES ($1, $2, $3, $4, $5, NOW())
        ON CONFLICT (cliente_id) DO UPDATE SET
@@ -218,10 +215,13 @@ const csvPath = process.env.CSV_PATH
   ? resolve(process.cwd(), process.env.CSV_PATH)
   : defaultPath;
 
-importCsv(csvPath)
-  .then(() => pool.end())
-  .catch((err) => {
-    console.error('Erro na importação:', err);
-    pool.end();
-    process.exit(1);
-  });
+async function main() {
+  assertDatabaseUrl('import-csv');
+  await importCsv(csvPath);
+  await closePool();
+}
+
+main().catch((err) => {
+  console.error('Erro na importação:', err);
+  closePool().finally(() => process.exit(1));
+});
