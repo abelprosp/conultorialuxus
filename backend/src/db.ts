@@ -10,7 +10,11 @@ function buildPoolConfig(): pg.PoolConfig {
     process.env.DATABASE_URL ??
     'postgresql://assessoria:assessoria@localhost:55432/assessoria_cobrancas';
 
-  const config: pg.PoolConfig = { connectionString };
+  const config: pg.PoolConfig = {
+    connectionString,
+    // Evita hang indefinido no startup/migrate quando o Postgres ainda não está pronto
+    connectionTimeoutMillis: 5_000,
+  };
 
   if (
     process.env.PGSSLMODE === 'require' ||

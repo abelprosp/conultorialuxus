@@ -176,6 +176,51 @@ Para ver deploys pulados: **Deployments** → **Show Skipped**.
 - Confirme `NODE_ENV=production` (o backend só serve o frontend em produção)
 - Veja logs: migrations e `API rodando em...`
 
+### Health check falha (`/api/health` → service unavailable)
+
+Sintoma nos logs de deploy:
+
+```
+Path: /api/health
+Attempt #1-6 failed with service unavailable
+```
+
+**Causa raiz:** o `deploy/entrypoint.sh` executava `migrate.js` **antes** de subir a API. O `pg` Pool não tinha timeout de conexão — se o Postgres do Railway ainda não estava pronto (ou `DATABASE_URL` apontava para host errado), cada tentativa de migration **travava indefinidamente** e o Express **nunca abria a porta** → health check falhava.
+
+**Correção (após commit com entrypoint em background + `connectionTimeoutMillis`):**
+
+1. App sobe **imediatamente**; migrations rodam em **background**
+2. `/api/health` **não depende** do banco (rota registrada antes de qualquer query)
+3. Logs de startup mostram `PORT=...` e `DATABASE_URL=set|unset` (sem expor o valor)
+
+**Checklist se ainda falhar:**
+
+| Verificação | Esperado |
+|-------------|----------|
+| Root Directory | *(vazio)* — raiz do monorepo |
+| Builder | Dockerfile (não Nixpacks) |
+| Start Command | *(vazio)* — usa `deploy/entrypoint.sh` |
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` no serviço App |
+| Logs de startup | `=== Startup ===`, `PORT=...`, `API rodando em http://0.0.0.0:...` |
+| Health manual | `curl https://SEU-DOMINIO.up.railway.app/api/health` → `{"status":"ok",...}` |
+
+**Teste local simulando Railway:**
+
+```bash
+docker build -t assessoria-railway .
+docker run --rm -p 8080:8080 \
+  -e PORT=8080 \
+  -e NODE_ENV=production \
+  -e DATABASE_URL=postgresql://user:pass@host:5432/db \
+  assessoria-railway
+
+# Em outro terminal:
+curl http://localhost:8080/api/health
+```
+
+O health deve responder **antes** das migrations terminarem.
+
 ### Erro de banco / migrations
 
 - `DATABASE_URL` deve apontar para o Postgres do Railway (host interno, não `localhost`)

@@ -33,6 +33,10 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+console.log(
+  `[startup] PORT=${PORT} HOST=${HOST} NODE_ENV=${process.env.NODE_ENV ?? 'unset'} DATABASE_URL=${process.env.DATABASE_URL ? 'set' : 'unset'}`
+);
+
 app.listen(PORT, HOST, () => {
   console.log(`API rodando em http://${HOST}:${PORT}`);
 });

@@ -33,6 +33,7 @@ COPY deploy/entrypoint.sh ./entrypoint.sh
 
 RUN chmod +x ./entrypoint.sh
 
-EXPOSE 3001
+# Railway injeta PORT em runtime (ex.: 8080) — não fixar aqui
+EXPOSE 8080
 
 ENTRYPOINT ["./entrypoint.sh"]
