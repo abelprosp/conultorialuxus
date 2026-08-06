@@ -1,17 +1,16 @@
 #!/bin/sh
+set -eu
+
+export PORT="${PORT:-8080}"
+export NODE_ENV="${NODE_ENV:-production}"
 
 MAX_RETRIES=30
 RETRY_DELAY=2
-PORT="${PORT:-3001}"
 
 echo "=== Startup ==="
 echo "PORT=${PORT}"
-if [ -n "$DATABASE_URL" ]; then
-  echo "DATABASE_URL=set"
-else
-  echo "DATABASE_URL=unset"
-fi
-echo "NODE_ENV=${NODE_ENV:-unset}"
+echo "DATABASE_URL=$([ -n "${DATABASE_URL:-}" ] && echo set || echo unset)"
+echo "NODE_ENV=${NODE_ENV}"
 
 run_migrate_with_retry() {
   echo "Executando migrations em background (retry até o Postgres ficar pronto)..."
@@ -30,7 +29,7 @@ run_migrate_with_retry() {
   return 0
 }
 
-if [ -n "$DATABASE_URL" ]; then
+if [ -n "${DATABASE_URL:-}" ]; then
   run_migrate_with_retry &
 else
   echo "AVISO: DATABASE_URL não definida — pulando migrations"

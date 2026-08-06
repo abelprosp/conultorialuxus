@@ -185,13 +185,21 @@ Path: /api/health
 Attempt #1-6 failed with service unavailable
 ```
 
-**Causa raiz:** o `deploy/entrypoint.sh` executava `migrate.js` **antes** de subir a API. O `pg` Pool não tinha timeout de conexão — se o Postgres do Railway ainda não estava pronto (ou `DATABASE_URL` apontava para host errado), cada tentativa de migration **travava indefinidamente** e o Express **nunca abria a porta** → health check falhava.
+**Causas comuns (e correções no repo):**
 
-**Correção (após commit com entrypoint em background + `connectionTimeoutMillis`):**
+| Causa | Sintoma | Correção |
+|-------|---------|----------|
+| Migrations bloqueavam o listen | Build OK, health timeout | Migrations em **background** (`entrypoint.sh`) |
+| **PORT divergente** | Logs: entrypoint `3001`, Node `47291` | `export PORT` no entrypoint + fallback `8080` em produção (`index.ts`) |
+| `node_modules` ausente no runner | Crash: `Cannot find package 'express'` | Dockerfile copia `node_modules` do builder (após `npm prune --omit=dev`) |
+| CRLF no `entrypoint.sh` | `exec format error` ou shebang quebrado | `.gitattributes` força LF em `*.sh` |
+| Start Command customizado | Ignora entrypoint ou roda comando errado | Deixe **vazio** no dashboard |
 
-1. App sobe **imediatamente**; migrations rodam em **background**
-2. `/api/health` **não depende** do banco (rota registrada antes de qualquer query)
-3. Logs de startup mostram `PORT=...` e `DATABASE_URL=set|unset` (sem expor o valor)
+**Comportamento esperado após o fix:**
+
+1. App sobe **imediatamente**; migrations rodam em **background** (se `DATABASE_URL` definida)
+2. `/api/health` **não depende** do banco
+3. Logs: `=== Startup ===`, `PORT=...` (mesmo valor em entrypoint e `[startup]`), `API rodando em http://0.0.0.0:...`
 
 **Checklist se ainda falhar:**
 
@@ -202,24 +210,34 @@ Attempt #1-6 failed with service unavailable
 | Start Command | *(vazio)* — usa `deploy/entrypoint.sh` |
 | `NODE_ENV` | `production` |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` no serviço App |
-| Logs de startup | `=== Startup ===`, `PORT=...`, `API rodando em http://0.0.0.0:...` |
+| **Não sobrescrever `PORT`** | Railway injeta automaticamente; valor manual pode quebrar o health check |
+| Logs de startup | `[startup] PORT=` igual ao `PORT=` do entrypoint |
 | Health manual | `curl https://SEU-DOMINIO.up.railway.app/api/health` → `{"status":"ok",...}` |
 
 **Teste local simulando Railway:**
 
 ```bash
 docker build -t assessoria-railway .
+
+# Com PORT do Railway (health deve responder na mesma porta)
 docker run --rm -p 8080:8080 \
   -e PORT=8080 \
   -e NODE_ENV=production \
-  -e DATABASE_URL=postgresql://user:pass@host:5432/db \
   assessoria-railway
+curl http://localhost:8080/api/health
 
-# Em outro terminal:
+# Sem PORT no env — app deve usar 8080 (fallback produção), não 47291
+docker run --rm -p 8080:8080 -e NODE_ENV=production assessoria-railway
+curl http://localhost:8080/api/health
+
+# Com DATABASE_URL inválida — health ainda responde antes das migrations
+docker run --rm -p 8080:8080 \
+  -e PORT=8080 \
+  -e NODE_ENV=production \
+  -e DATABASE_URL=postgresql://u:p@invalid:5432/db \
+  assessoria-railway
 curl http://localhost:8080/api/health
 ```
-
-O health deve responder **antes** das migrations terminarem.
 
 ### Erro de banco / migrations
 

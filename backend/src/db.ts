@@ -28,6 +28,10 @@ function buildPoolConfig(): pg.PoolConfig {
 
 export const pool = new Pool(buildPoolConfig());
 
+pool.on('error', (err) => {
+  console.error('[db] pool error (cliente idle):', err.message);
+});
+
 export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   params?: unknown[]
