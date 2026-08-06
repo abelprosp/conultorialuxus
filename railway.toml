@@ -4,6 +4,19 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
+# Sobrescreve Watch Paths do dashboard (config-as-code). Padrões gitignore a partir da raiz do repo.
+# Para deploy em qualquer push, remova watchPatterns e deixe Watch Paths vazio no dashboard.
+watchPatterns = [
+  "/backend/**",
+  "/frontend/**",
+  "/deploy/**",
+  "/data/**",
+  "/Dockerfile",
+  "/railway.toml",
+  "/nixpacks.toml",
+  "/package.json",
+  "/package-lock.json",
+]
 
 [deploy]
 healthcheckPath = "/api/health"

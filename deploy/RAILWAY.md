@@ -58,7 +58,7 @@ Abra o serviço da aplicação → **Settings**:
 | **Dockerfile Path** | `Dockerfile` |
 | **Build Command** | *(vazio — deixe o Dockerfile fazer o build)* |
 | **Start Command** | *(vazio — usa `deploy/entrypoint.sh` do Dockerfile)* |
-| **Watch Paths** | *(opcional)* deixe padrão |
+| **Watch Paths** | *(recomendado)* **vazio** — deploy em todo push; ou veja [Watch Paths](#watch-paths-deploy-nao-disparou) |
 
 **Variables** (serviço App):
 
@@ -112,6 +112,58 @@ Health Check Path:  /api/health   (opcional; railway.toml já define)
 
 ## Solução de problemas
 
+### Watch Paths — deploy não disparou
+
+Mensagem típica nos logs do GitHub / Railway:
+
+> No changes to watched files. If this change should have triggered a deploy, adjust the watch paths in your service settings.
+
+**Por que acontece:** o serviço tem **Watch Paths** restritos (ex.: só `backend/**` ou `frontend/**`, comum em monorepos detectados automaticamente). O commit alterou arquivos na **raiz** ou em `deploy/` (`Dockerfile`, `railway.toml`, `nixpacks.toml`, `deploy/RAILWAY.md`) que **não batem** com esses padrões — o Railway recebe o push, mas **pula** o deploy.
+
+**Opção A — mais simples (1 serviço só): limpar Watch Paths**
+
+1. Abra o projeto no [Railway](https://railway.app)
+2. Clique no **serviço App** (não no Postgres)
+3. Aba **Settings**
+4. Seção **Source** (ou **Deploy**)
+5. Campo **Watch Paths** → apague **todas** as linhas (deixe vazio)
+6. Salve (Railway salva automaticamente ao sair do campo)
+
+Com Watch Paths vazio, **qualquer push** na branch conectada dispara deploy.
+
+**Opção B — manter filtros: alinhar com o repositório**
+
+No dashboard, em **Watch Paths**, use um padrão por linha (estilo `.gitignore`, sempre a partir da **raiz do repo**):
+
+```gitignore
+/backend/**
+/frontend/**
+/deploy/**
+/data/**
+/Dockerfile
+/railway.toml
+/nixpacks.toml
+/package.json
+/package-lock.json
+```
+
+O `railway.toml` na raiz já define `watchPatterns` equivalentes — em cada deploy, a config do arquivo **sobrescreve** o dashboard ([docs](https://docs.railway.com/config-as-code/reference#watch-patterns)). Depois do primeiro deploy com esse commit, os padrões passam a vir do repo.
+
+**Redeploy manual agora (commit já no GitHub, deploy pulado)**
+
+1. No canvas do projeto, clique no **serviço App**
+2. Pressione **`Cmd + K`** (Mac) ou **`Ctrl + K`** (Windows/Linux)
+3. Digite **Deploy Latest Commit** e confirme
+
+Isso faz build do **último commit** da branch conectada (ex.: `main`), ignorando Watch Paths.
+
+Alternativas:
+
+- Aba **Deployments** → três pontos (**⋯**) em um deploy anterior → **Redeploy** — repete o **mesmo** commit daquele deploy (útil para reiniciar, não para pegar commit novo)
+- CLI: `railway redeploy --service NOME_DO_SERVICO` (reinicia o último deploy) ou `railway up` (envia código local)
+
+Para ver deploys pulados: **Deployments** → **Show Skipped**.
+
 ### `No workspaces found: --workspace=frontend`
 
 - Root Directory **não** pode ser `frontend`
@@ -153,7 +205,7 @@ docker run --rm -p 3001:3001 -e NODE_ENV=production -e DATABASE_URL=... assessor
 
 | Arquivo | Função |
 |---------|--------|
-| `railway.toml` | Força builder Dockerfile e health check |
+| `railway.toml` | Builder Dockerfile, health check e `watchPatterns` |
 | `Dockerfile` | Build monorepo (backend + frontend) e runtime |
 | `nixpacks.toml` | Fallback se Nixpacks for usado na raiz |
 | `deploy/entrypoint.sh` | Migrations + start da API |
