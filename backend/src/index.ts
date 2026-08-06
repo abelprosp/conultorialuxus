@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import clientesRouter from './routes/clientes.js';
@@ -48,9 +49,23 @@ try {
 
   if (process.env.NODE_ENV === 'production') {
     const frontendDist = path.resolve(__dirname, '../../frontend/dist');
+    const indexHtml = path.join(frontendDist, 'index.html');
+    const distExists = fs.existsSync(frontendDist);
+    const indexExists = fs.existsSync(indexHtml);
+
+    console.log(
+      `[startup] frontend dist=${frontendDist} exists=${distExists} index.html=${indexExists}`
+    );
+
+    if (!distExists || !indexExists) {
+      console.error(
+        '[startup] AVISO: frontend/dist ausente — a UI não será servida. Confirme Root Directory vazio e Dockerfile na raiz do repo.'
+      );
+    }
+
     app.use(express.static(frontendDist));
     app.get('*', (_req, res) => {
-      res.sendFile(path.join(frontendDist, 'index.html'));
+      res.sendFile(indexHtml);
     });
   }
 

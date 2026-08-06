@@ -2,6 +2,59 @@
 
 Guia para publicar o **Assessoria Cobranças** no [Railway](https://railway.app). O frontend React é servido pelo backend Express na mesma URL — **use um único serviço de app**, não dois.
 
+---
+
+## CRÍTICO — um serviço só (não separe frontend)
+
+O deploy correto usa **UM único serviço** com o `Dockerfile` na **raiz do repositório**. Esse container sobe a API **e** serve o React estático (`/app/frontend/dist`).
+
+| Situação | O que você vê | Causa |
+|----------|---------------|-------|
+| **2 serviços** (App + Frontend) | Backend “ok”, frontend falha, healthcheck `/api/health` timeout | O serviço **Frontend** não tem API — o probe falha |
+| **Root Directory = `frontend`** | Build Nixpacks ou estático sem `/api/health` | Railway ignora o monorepo e o Dockerfile da raiz |
+| **1 serviço correto** | `/api/health` → 200, `/` → HTML | Dockerfile na raiz, `NODE_ENV=production` |
+
+### Apagar serviço frontend separado (se existir)
+
+1. Abra o projeto no [Railway](https://railway.app)
+2. No **canvas**, clique no serviço que se chama **Frontend** (ou similar) — **não** clique no Postgres
+3. Aba **Settings** → role até **Danger** (ou **Service Settings**)
+4. **Delete Service** / **Remove Service** → confirme
+5. Mantenha apenas: **1 serviço App** (Dockerfile) + **1 Postgres**
+
+### Corrigir serviço com Root Directory = `frontend`
+
+Se você **não** quer apagar e prefere reutilizar o serviço:
+
+1. Clique no serviço → **Settings** → **Source**
+2. **Root Directory** → apague `frontend` e deixe **vazio** (raiz do repo)
+3. **Builder** → **Dockerfile**
+4. **Dockerfile Path** → `Dockerfile`
+5. **Build Command** → apague qualquer `npm run build -w frontend`
+6. **Start Command** → **vazio** (usa `deploy/entrypoint.sh`)
+7. **Variables** → `NODE_ENV=production`, `DATABASE_URL=${{Postgres.DATABASE_URL}}`
+8. **Networking** → **Generate Domain** neste serviço (não no que você apagou)
+9. **Deploy Latest Commit** (`Cmd+K` → Deploy Latest Commit)
+
+### Como saber se está certo
+
+Nos **logs de deploy** do serviço App, após subir:
+
+```
+[startup] frontend dist=/app/frontend/dist exists=true index.html=true
+[startup] PORT=... HOST=0.0.0.0 NODE_ENV=production ...
+API rodando em http://0.0.0.0:...
+```
+
+Teste a URL pública:
+
+- `https://SEU-DOMINIO.up.railway.app/api/health` → `{"status":"ok",...}`
+- `https://SEU-DOMINIO.up.railway.app/` → página HTML do React
+
+Se `exists=false` nos logs, o build Docker não gerou o frontend — confira Root Directory vazio e redeploy.
+
+---
+
 ## Por que deu erro `No workspaces found: --workspace=frontend`?
 
 Esse erro aparece quando o Railway **não está na raiz do monorepo**:
