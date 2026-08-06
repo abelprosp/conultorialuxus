@@ -8,12 +8,31 @@ const { Pool } = pg;
 
 let poolInstance: pg.Pool | null = null;
 
+function isUnresolvedReference(value: string): boolean {
+  return /^\$\{\{[^}]+\}\}$/.test(value.trim());
+}
+
+function buildUrlFromPgEnv(): string | undefined {
+  const { PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE } = process.env;
+  if (!PGHOST || !PGUSER || !PGPASSWORD || !PGDATABASE) return undefined;
+  const port = PGPORT || '5432';
+  const user = encodeURIComponent(PGUSER);
+  const pass = encodeURIComponent(PGPASSWORD);
+  return `postgresql://${user}:${pass}@${PGHOST}:${port}/${PGDATABASE}`;
+}
+
 export function resolveDatabaseUrl(): string | undefined {
-  return (
-    process.env.DATABASE_URL ??
-    process.env.DATABASE_PRIVATE_URL ??
-    process.env.DATABASE_PUBLIC_URL
-  );
+  const candidates = [
+    process.env.DATABASE_URL,
+    process.env.DATABASE_PRIVATE_URL,
+    process.env.DATABASE_PUBLIC_URL,
+  ];
+
+  for (const url of candidates) {
+    if (url && !isUnresolvedReference(url)) return url;
+  }
+
+  return buildUrlFromPgEnv();
 }
 
 function shouldUseSsl(connectionString: string): boolean {
@@ -109,10 +128,18 @@ export async function checkDbHealth(): Promise<DbHealthStatus> {
 export function assertDatabaseUrl(scriptName: string): void {
   if (resolveDatabaseUrl()) return;
 
-  console.error(`[${scriptName}] DATABASE_URL não definida no ambiente.`);
+  const raw = process.env.DATABASE_URL;
+  console.error(`[${scriptName}] Não foi possível resolver URL do Postgres.`);
+  console.error(`[${scriptName}] Diagnóstico:`);
+  console.error(`  DATABASE_URL=${raw ? (isUnresolvedReference(raw) ? 'referência não resolvida (${{...}})' : 'presente mas inválida') : 'ausente'}`);
+  console.error(`  DATABASE_PRIVATE_URL=${process.env.DATABASE_PRIVATE_URL ? 'presente' : 'ausente'}`);
+  console.error(`  PGHOST=${process.env.PGHOST ?? 'ausente'}`);
+  console.error(`  PGUSER=${process.env.PGUSER ? 'presente' : 'ausente'}`);
   console.error(`[${scriptName}] No Railway:`);
-  console.error('  1. backend → Variables → Add Reference → Postgres → DATABASE_URL');
-  console.error('  2. Redeploy o serviço');
-  console.error('  3. Confirme: echo $DATABASE_URL (no Shell) ou use railway run ...');
+  console.error('  1. Apague variável errada "Postgres" (só deve existir DATABASE_URL como referência)');
+  console.error('  2. DATABASE_URL = Add Reference → serviço Postgres → DATABASE_URL');
+  console.error('  3. Nome do serviço Postgres no canvas deve ser exatamente "Postgres"');
+  console.error('  4. Redeploy → Shell novo → cd /app && echo $DATABASE_URL');
+  console.error('  5. Ou copie DATABASE_URL do Postgres → cole literal no backend');
   process.exit(1);
 }

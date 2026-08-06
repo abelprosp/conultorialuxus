@@ -144,8 +144,20 @@ railway run node backend/dist/scripts/import-csv.js
 
 **Via Shell** no serviço App:
 
+> **Importante:** o diretório de trabalho do container é `/app`. **Não** faça `cd backend` antes — os caminhos abaixo são relativos a `/app`.
+
 ```bash
+cd /app   # se você estiver em outro diretório
+echo $DATABASE_URL   # deve mostrar a URL (não vazio)
+node backend/dist/scripts/migrate.js
 node backend/dist/scripts/import-csv.js
+```
+
+Se você já estiver em `/app/backend`, use caminhos relativos a essa pasta:
+
+```bash
+node dist/scripts/migrate.js
+node dist/scripts/import-csv.js
 ```
 
 ---
@@ -321,9 +333,27 @@ curl https://SEU-DOMINIO.up.railway.app/api/health/db
 | Causa | Sintoma nos logs |
 |-------|------------------|
 | **`DATABASE_URL` ausente** no serviço App | `DATABASE_URL unset`, `MIGRATION_STATUS=skipped` |
+| **Referência `${{Postgres.DATABASE_URL}}` não resolvida** | Shell: `echo $DATABASE_URL` vazio; variável literal `${{...}}` |
+| **Variável errada `Postgres`** (nome da variável, não referência) | Apague — só deve existir `DATABASE_URL=${{Postgres.DATABASE_URL}}` |
+| **Nome do serviço Postgres diferente** | Referência deve usar nome exato do card (ex.: `PostgreSQL` → `${{PostgreSQL.DATABASE_URL}}`) |
 | **Postgres não conectado** ao App | `[db] ... connection refused` ou SSL error |
 | **Migrations falharam** (SSL, timeout) | `MIGRATION_STATUS=failed`, `[migrate] conexão tentativa N/30` |
 | **SSL obrigatório** (Railway Postgres) | `no pg_hba.conf entry` — corrigido automaticamente para hosts `*.railway.*` |
+
+### Variables — configuração correta (screenshot)
+
+No serviço **backend → Variables** deve aparecer **apenas**:
+
+| Nome | Valor |
+|------|-------|
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (referência, ícone verde de link) |
+| `NODE_ENV` | `production` |
+
+**Apague** se existir uma variável separada chamada `Postgres` com valor mascarado — isso **não** conecta o banco.
+
+Confirme que o card do banco no canvas se chama exatamente **Postgres** (ou ajuste a referência ao nome real).
+
+Após alterar variables: **Redeploy** → abra **Shell novo** → `cd /app` → `printenv | grep -E 'DATABASE|PG'`
 
 ### Conectar Postgres ao serviço App (obrigatório)
 
@@ -358,9 +388,11 @@ railway run node backend/dist/scripts/migrate.js
 **Via Shell no dashboard:**
 
 1. Serviço App → aba **Shell** (ou one-off command)
-2. Execute:
+2. Execute (sempre a partir de `/app` — **não** `cd backend`):
 
 ```bash
+cd /app
+echo $DATABASE_URL
 node backend/dist/scripts/migrate.js
 ```
 
@@ -378,9 +410,10 @@ Logs esperados:
 railway run node backend/dist/scripts/import-csv.js
 ```
 
-Ou no Shell do App:
+Ou no Shell do App (diretório `/app`):
 
 ```bash
+cd /app
 node backend/dist/scripts/import-csv.js
 ```
 
