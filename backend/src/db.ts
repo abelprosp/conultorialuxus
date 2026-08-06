@@ -5,9 +5,24 @@ dotenv.config();
 
 const { Pool } = pg;
 
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL ?? 'postgresql://assessoria:assessoria@localhost:55432/assessoria_cobrancas',
-});
+function buildPoolConfig(): pg.PoolConfig {
+  const connectionString =
+    process.env.DATABASE_URL ??
+    'postgresql://assessoria:assessoria@localhost:55432/assessoria_cobrancas';
+
+  const config: pg.PoolConfig = { connectionString };
+
+  if (
+    process.env.PGSSLMODE === 'require' ||
+    /sslmode=(require|verify-full|verify-ca)/i.test(connectionString)
+  ) {
+    config.ssl = { rejectUnauthorized: false };
+  }
+
+  return config;
+}
+
+export const pool = new Pool(buildPoolConfig());
 
 export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,

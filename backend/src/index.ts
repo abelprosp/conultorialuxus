@@ -11,7 +11,8 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const PORT = process.env.PORT ?? 47291;
+const PORT = Number(process.env.PORT) || 47291;
+const HOST = '0.0.0.0';
 
 app.use(cors());
 app.use(express.json());
@@ -32,6 +33,6 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`API rodando em http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`API rodando em http://${HOST}:${PORT}`);
 });
