@@ -1,0 +1,17 @@
+# Fallback se o Railway não usar o Dockerfile (Nixpacks).
+# Preferível: railway.toml com builder = "DOCKERFILE" e Root Directory = raiz do repositório.
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = [
+  "cd backend && npm run build",
+  "cd frontend && npm run build",
+]
+
+[start]
+cmd = "sh deploy/entrypoint.sh"

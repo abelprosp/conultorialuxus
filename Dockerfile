@@ -11,7 +11,8 @@ RUN npm ci
 COPY backend ./backend
 COPY frontend ./frontend
 
-RUN npm run build -w backend && npm run build -w frontend
+# Build por diretório (não usa npm workspaces — evita falha se o contexto de deploy não incluir o package.json raiz)
+RUN cd backend && npm run build && cd ../frontend && npm run build
 
 FROM node:20-alpine AS runner
 

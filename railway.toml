@@ -1,0 +1,12 @@
+# Railway — Assessoria Cobranças (monorepo)
+# Use UM serviço com este Dockerfile. Não defina Root Directory como "frontend".
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/api/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
