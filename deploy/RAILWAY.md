@@ -4,6 +4,41 @@ Guia para publicar o **Assessoria Cobranças** no [Railway](https://railway.app)
 
 ---
 
+## Setup automático (recomendado)
+
+Um comando configura **1 serviço App + Postgres conectado** (referências `DATABASE_URL` e `PG*`):
+
+```bash
+npm install -g @railway/cli
+railway login
+cd consultoria
+npm run railway:setup
+```
+
+O script:
+1. Cria/linka projeto Railway
+2. Adiciona PostgreSQL
+3. Pede para selecionar o serviço **backend** (não frontend, não Postgres)
+4. Define `DATABASE_URL=${{Postgres.DATABASE_URL}}` + `PGHOST`, `PGUSER`, etc.
+5. Faz deploy via Dockerfile
+6. Roda migration (+ import CSV opcional)
+
+**Projeto já existente com banco desconectado:**
+
+```bash
+npm run railway:fix-db
+railway up --detach
+railway run node backend/dist/scripts/migrate.js
+```
+
+Se o Postgres no canvas não se chama `Postgres`:
+
+```bash
+PG_SERVICE=PostgreSQL npm run railway:fix-db
+```
+
+---
+
 ## CRÍTICO — um serviço só (não separe frontend)
 
 O deploy correto usa **UM único serviço** com o `Dockerfile` na **raiz do repositório**. Esse container sobe a API **e** serve o React estático (`/app/frontend/dist`).

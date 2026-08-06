@@ -8,7 +8,10 @@
     "db:down": "docker compose down",
     "db:migrate": "npm run migrate -w backend",
     "db:import": "npm run import -w backend",
-    "setup": "npm install && npm run db:up && sleep 3 && npm run db:migrate && npm run db:import"
+    "setup": "npm install && npm run db:up && sleep 3 && npm run db:migrate && npm run db:import",
+    "railway:setup": "bash scripts/railway-setup.sh",
+    "railway:fix-db": "bash scripts/railway-fix-db.sh",
+    "railway:deploy": "bash scripts/railway-setup.sh --deploy-only"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
