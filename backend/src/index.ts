@@ -51,7 +51,7 @@ try {
         status: 'error',
         db: 'disconnected',
         migration_status: process.env.MIGRATION_STATUS ?? 'unknown',
-        hint: 'Confira DATABASE_URL e conecte o plugin Postgres no Railway',
+        hint: 'Confira PGHOST/PGUSER/PGPASSWORD/PGDATABASE ou DATABASE_URL no .env e logs do container',
       });
       return;
     }
@@ -61,7 +61,7 @@ try {
         db: 'connected',
         schema: 'missing',
         migration_status: process.env.MIGRATION_STATUS ?? 'unknown',
-        hint: 'Rode: railway run node backend/dist/scripts/migrate.js',
+        hint: 'Rode migrations: docker compose -f docker-compose.prod.yml exec app node backend/dist/scripts/migrate.js',
       });
       return;
     }

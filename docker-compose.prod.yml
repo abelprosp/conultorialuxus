@@ -24,7 +24,12 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      DATABASE_URL: postgresql://${POSTGRES_USER:-assessoria}:${POSTGRES_PASSWORD}@postgres:5432/assessoria_cobrancas
+      # Variáveis PG* (senha com @, #, : etc. quebra DATABASE_URL montada manualmente)
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: ${POSTGRES_USER:-assessoria}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: assessoria_cobrancas
     depends_on:
       postgres:
         condition: service_healthy

@@ -8,10 +8,24 @@ MIGRATE_TIMEOUT="${MIGRATE_TIMEOUT:-120}"
 
 echo "=== Startup ==="
 echo "PORT=${PORT}"
-echo "DATABASE_URL=$([ -n "${DATABASE_URL:-}" ] && echo set || echo unset)"
 echo "NODE_ENV=${NODE_ENV}"
 
-if [ -n "${DATABASE_URL:-}" ]; then
+# Monta DATABASE_URL com encoding correto (senhas com @, #, : etc.)
+if [ -z "${DATABASE_URL:-}" ] && [ -n "${PGPASSWORD:-}" ]; then
+  export DATABASE_URL="$(node -e "
+    const u = encodeURIComponent(process.env.PGUSER || 'assessoria');
+    const p = encodeURIComponent(process.env.PGPASSWORD || '');
+    const h = process.env.PGHOST || 'postgres';
+    const port = process.env.PGPORT || '5432';
+    const d = process.env.PGDATABASE || 'assessoria_cobrancas';
+    process.stdout.write('postgresql://' + u + ':' + p + '@' + h + ':' + port + '/' + d);
+  ")"
+fi
+
+echo "DATABASE_URL=$([ -n "${DATABASE_URL:-}" ] && echo set || echo unset)"
+echo "PGHOST=${PGHOST:-unset}"
+
+if [ -n "${DATABASE_URL:-}" ] || [ -n "${PGPASSWORD:-}" ]; then
   echo "Executando migrations de forma síncrona (timeout ${MIGRATE_TIMEOUT}s, aguarda Postgres)..."
   if timeout "$MIGRATE_TIMEOUT" node backend/dist/scripts/migrate.js; then
     export MIGRATION_STATUS=ok
