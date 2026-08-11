@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-export PORT="${PORT:-8080}"
+export PORT="${PORT:-3001}"
 export NODE_ENV="${NODE_ENV:-production}"
 
 MIGRATE_TIMEOUT="${MIGRATE_TIMEOUT:-120}"
