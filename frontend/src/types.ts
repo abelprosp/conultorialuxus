@@ -96,6 +96,8 @@ export interface FaturamentoRow {
   valor_fixado: number | null;
   valor_total: number | null;
   status: StatusFaturamento;
+  solicitacao_id?: number | null;
+  prazo_emissao_vencido?: boolean;
   dia_limite_emissao: number | null;
   vcto_obrigatorio: boolean;
   vcto_obrigatorio_explicacao: string | null;
@@ -108,6 +110,7 @@ export interface FaturamentoResponse {
   competencia: { id: number; ano: number; mes: number; status: string };
   ano: number;
   mes: number;
+  fechada?: boolean;
   rows: FaturamentoRow[];
 }
 
@@ -149,6 +152,35 @@ export interface DashboardStats {
   por_produto: { produto: string; total: number }[];
   por_solicitante: { solicitante: string; total: number }[];
   por_categoria: { categoria: string; descricao: string; total: number }[];
+  mensal?: {
+    ano: number;
+    mes: number;
+    total_clientes: number;
+    prontos: number;
+    aguardando_liberacao: number;
+    rascunho: number;
+    valor_total_prontos: number;
+    liberacoes_pendentes: number;
+    prazo_emissao_vencido: number;
+  };
+}
+
+export interface User {
+  id: number;
+  nome: string;
+  email: string;
+  perfil: 'admin' | 'financeiro' | 'contratado';
+  colaborador_id: number | null;
+}
+
+export interface LiberacaoPendente {
+  faturamento_id: number;
+  cliente_id: number;
+  razao_social: string;
+  servico_codigo: string;
+  servico_nome: string;
+  ano: number;
+  mes: number;
 }
 
 export interface FiltrosOpcoes {

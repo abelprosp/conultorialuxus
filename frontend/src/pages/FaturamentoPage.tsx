@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, formatCurrency, STATUS_FAT_COLORS } from '../api';
+import { useAuth } from '../context/AuthContext';
 import type { ClienteServico, FaturamentoRow, StatusFaturamento } from '../types';
 import { STATUS_FATURAMENTO_LABELS } from '../types';
 
@@ -23,12 +25,14 @@ function toInputDate(value: string | null): string {
 }
 
 export default function FaturamentoPage() {
+  const { user, isFinanceiro, isAdmin } = useAuth();
   const [{ ano, mes }, setComp] = useState(currentCompetencia);
   const [rows, setRows] = useState<FaturamentoRow[]>([]);
+  const [fechada, setFechada] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [savingId, setSavingId] = useState<number | null>(null);
-  const [solicitante, setSolicitante] = useState('');
+  const [expanded, setExpanded] = useState<number | null>(null);
   const [filtro, setFiltro] = useState<'todos' | 'pendentes' | 'prontos'>('todos');
 
   const mesLabel = useMemo(
@@ -39,17 +43,15 @@ export default function FaturamentoPage() {
   const load = () => {
     setLoading(true);
     api.getFaturamento(ano, mes)
-      .then((data) => setRows(data.rows))
+      .then((data) => {
+        setRows(data.rows);
+        setFechada(Boolean(data.fechada));
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => {
-    load();
-    api.getFaturamentoMeta().then((m) => {
-      if (m.solicitantes[0]) setSolicitante(m.solicitantes[0].nome);
-    }).catch(console.error);
-  }, [ano, mes]);
+  useEffect(() => { load(); }, [ano, mes]);
 
   const filtered = rows.filter((r) => {
     if (filtro === 'pendentes') return r.status === 'aguardando_liberacao' || r.status === 'rascunho';
@@ -58,8 +60,10 @@ export default function FaturamentoPage() {
   });
 
   const totalGeral = filtered.reduce((acc, r) => acc + (r.valor_total ?? 0), 0);
+  const atrasados = filtered.filter((r) => r.prazo_emissao_vencido).length;
 
   const saveRow = async (row: FaturamentoRow, patch: Record<string, unknown>) => {
+    if (fechada) return;
     setSavingId(row.id);
     try {
       await api.saveFaturamento(ano, mes, row.cliente_id, {
@@ -87,12 +91,9 @@ export default function FaturamentoPage() {
   };
 
   const toggleLiberacao = async (row: FaturamentoRow, codigo: string, liberado: boolean) => {
+    if (fechada) return;
     try {
-      const serv = servicoAtivo(row.servicos, codigo);
-      await api.liberarServico(row.id, codigo, {
-        liberado,
-        colaborador_id: serv?.responsavel_id ?? undefined,
-      });
+      await api.liberarServico(row.id, codigo, { liberado });
       load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro na liberação');
@@ -101,7 +102,7 @@ export default function FaturamentoPage() {
 
   const handleSolicitar = async () => {
     try {
-      const res = await api.solicitarFinanceiro(ano, mes, solicitante || undefined);
+      const res = await api.solicitarFinanceiro(ano, mes, user?.nome);
       alert(`${res.criados} solicitação(ões) criada(s) para o financeiro.`);
       load();
     } catch (e) {
@@ -122,11 +123,18 @@ export default function FaturamentoPage() {
           <p>Preencha todos os clientes na mesma tela — {mesLabel}</p>
         </div>
         <div className="header-actions-row">
-          <button type="button" className="btn btn-ghost" onClick={() => shiftMonth(-1)}>◀ Mês anterior</button>
-          <button type="button" className="btn btn-ghost" onClick={() => setComp(currentCompetencia())}>Mês atual</button>
-          <button type="button" className="btn btn-ghost" onClick={() => shiftMonth(1)}>Próximo mês ▶</button>
+          <button type="button" className="btn btn-ghost" onClick={() => shiftMonth(-1)}>◀ Anterior</button>
+          <button type="button" className="btn btn-ghost" onClick={() => setComp(currentCompetencia())}>Atual</button>
+          <button type="button" className="btn btn-ghost" onClick={() => shiftMonth(1)}>Próximo ▶</button>
         </div>
       </div>
+
+      {fechada && (
+        <div className="alert-banner alert-warn">Competência fechada — somente leitura. {isAdmin && 'Admin pode reabrir abaixo.'}</div>
+      )}
+      {atrasados > 0 && !fechada && (
+        <div className="alert-banner alert-warn">{atrasados} cliente(s) com prazo de emissão vencido neste mês.</div>
+      )}
 
       <div className="card">
         <div className="filters-bar">
@@ -134,54 +142,73 @@ export default function FaturamentoPage() {
             <label>Filtrar</label>
             <select value={filtro} onChange={(e) => setFiltro(e.target.value as typeof filtro)}>
               <option value="todos">Todos</option>
-              <option value="pendentes">Pendentes / rascunho</option>
-              <option value="prontos">Prontos p/ emissão</option>
+              <option value="pendentes">Pendentes</option>
+              <option value="prontos">Prontos</option>
             </select>
           </div>
-          <div className="filter-group">
-            <label>Quem solicitou (lote)</label>
-            <input value={solicitante} onChange={(e) => setSolicitante(e.target.value)} placeholder="Operador" />
-          </div>
-          <button type="button" className="btn btn-secondary" onClick={() => api.exportFaturamentoCsv(ano, mes)}>
-            Exportar CSV
-          </button>
-          <button type="button" className="btn btn-primary" onClick={handleSolicitar}>
-            Solicitar financeiro
-          </button>
+          {isFinanceiro && (
+            <>
+              <button type="button" className="btn btn-secondary" onClick={() => api.exportFaturamentoCsv(ano, mes).catch((e) => setError(e.message))}>
+                Exportar CSV
+              </button>
+              <button type="button" className="btn btn-primary" onClick={handleSolicitar} disabled={fechada}>
+                Solicitar financeiro
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={fechada}
+                onClick={async () => {
+                  const r = await api.duplicarMesAnterior(ano, mes);
+                  alert(`${r.duplicados} linha(s) copiada(s) do mês anterior.`);
+                  load();
+                }}
+              >
+                Duplicar mês anterior
+              </button>
+              {!fechada ? (
+                <button type="button" className="btn btn-ghost" onClick={async () => { await api.fecharCompetencia(ano, mes); load(); }}>
+                  Fechar mês
+                </button>
+              ) : isAdmin ? (
+                <button type="button" className="btn btn-ghost" onClick={async () => { await api.reabrirCompetencia(ano, mes); load(); }}>
+                  Reabrir mês
+                </button>
+              ) : null}
+            </>
+          )}
         </div>
 
         <div className="fat-summary">
           <span>{filtered.length} clientes</span>
-          <strong>Total filtrado: {formatCurrency(totalGeral)}</strong>
+          <strong>Total: {formatCurrency(totalGeral)}</strong>
         </div>
 
         {error && <div className="error" style={{ margin: '1rem' }}>{error}</div>}
 
         {loading ? (
-          <div className="loading">Carregando faturamento...</div>
+          <div className="loading">Carregando...</div>
         ) : filtered.length === 0 ? (
-          <div className="empty-state">
-            Nenhum cliente com serviço ativo nesta competência.
-            Cadastre serviços nos clientes primeiro.
-          </div>
+          <div className="empty-state">Nenhum cliente com serviço ativo. Cadastre serviços nos clientes.</div>
         ) : (
           <div className="table-wrap fat-table-wrap">
             <table className="fat-table">
               <thead>
                 <tr>
+                  <th></th>
                   <th>Cliente</th>
-                  <th>Call center</th>
-                  <th>Base ajuste</th>
+                  <th>CC</th>
+                  <th>Base aj.</th>
                   <th>Ajuste</th>
-                  <th>Base contest.</th>
-                  <th>Contest.</th>
-                  <th>Linhas SW</th>
-                  <th>Software</th>
-                  <th>Fixo outros</th>
-                  <th>Outra cobr.</th>
+                  <th>Base cont.</th>
+                  <th>Cont.</th>
+                  <th>Linhas</th>
+                  <th>SW</th>
+                  <th>Fixo</th>
+                  <th>Outra</th>
                   <th>Total</th>
-                  <th>Vencimento</th>
-                  <th>Liberações</th>
+                  <th>Venc.</th>
+                  <th>Lib.</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -190,6 +217,9 @@ export default function FaturamentoPage() {
                   <FaturamentoRowEditor
                     key={row.id}
                     row={row}
+                    fechada={fechada}
+                    expanded={expanded === row.id}
+                    onToggleExpand={() => setExpanded(expanded === row.id ? null : row.id)}
                     saving={savingId === row.id}
                     onSave={(patch) => saveRow(row, patch)}
                     onToggleLib={(codigo, ok) => toggleLiberacao(row, codigo, ok)}
@@ -205,12 +235,12 @@ export default function FaturamentoPage() {
 }
 
 function FaturamentoRowEditor({
-  row,
-  saving,
-  onSave,
-  onToggleLib,
+  row, fechada, expanded, onToggleExpand, saving, onSave, onToggleLib,
 }: {
   row: FaturamentoRow;
+  fechada: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
   saving: boolean;
   onSave: (patch: Record<string, unknown>) => void;
   onToggleLib: (codigo: string, liberado: boolean) => void;
@@ -218,152 +248,112 @@ function FaturamentoRowEditor({
   const [local, setLocal] = useState(row);
   useEffect(() => setLocal(row), [row]);
 
-  const cc = servicoAtivo(local.servicos, 'call_center');
   const aj = servicoAtivo(local.servicos, 'ajuste');
   const co = servicoAtivo(local.servicos, 'contestacao');
   const sw = servicoAtivo(local.servicos, 'software');
-  const fx = servicoAtivo(local.servicos, 'vlr_fixado');
+  const disabled = fechada || local.status === 'solicitado_financeiro';
 
   const setNum = (field: keyof FaturamentoRow, value: string) => {
-    const n = value === '' ? null : Number(value);
-    setLocal((l) => ({ ...l, [field]: n }));
+    setLocal((l) => ({ ...l, [field]: value === '' ? null : Number(value) }));
   };
 
-  const blurSave = (patch: Record<string, unknown>) => onSave(patch);
+  const blurSave = (patch: Record<string, unknown>) => !disabled && onSave(patch);
 
   const statusClass = STATUS_FAT_COLORS[row.status as StatusFaturamento] ?? 'status-pendente';
 
   return (
-    <tr className={saving ? 'row-saving' : undefined}>
-      <td className="fat-cliente">
-        <strong>{local.razao_social}</strong>
-        <small>{local.cnpj ?? '—'}</small>
-        {local.dia_limite_emissao && (
-          <small className="fat-hint">Emissão até dia {local.dia_limite_emissao}</small>
-        )}
-      </td>
-      <td>{cc ? formatCurrency(local.valor_call_center) : '—'}</td>
-      <td>
-        {aj ? (
-          <input
-            type="number"
-            className="fat-input"
-            value={local.base_ajuste ?? ''}
-            onChange={(e) => setNum('base_ajuste', e.target.value)}
-            onBlur={() => blurSave({ base_ajuste: local.base_ajuste })}
-          />
-        ) : '—'}
-      </td>
-      <td>
-        {aj ? (
-          <div className="fat-cell-stack">
-            <span>{formatCurrency(local.valor_ajuste)}</span>
-            {aj.requer_liberacao && (
-              <label className="fat-check">
-                <input
-                  type="checkbox"
-                  checked={liberacaoOk(local, 'ajuste')}
-                  onChange={(e) => onToggleLib('ajuste', e.target.checked)}
-                />
-                {aj.responsavel_nome ?? 'Liberar'}
-              </label>
-            )}
-          </div>
-        ) : '—'}
-      </td>
-      <td>
-        {co ? (
-          <input
-            type="number"
-            className="fat-input"
-            value={local.base_contestacao ?? ''}
-            onChange={(e) => setNum('base_contestacao', e.target.value)}
-            onBlur={() => blurSave({ base_contestacao: local.base_contestacao })}
-          />
-        ) : '—'}
-      </td>
-      <td>
-        {co ? (
-          <div className="fat-cell-stack">
-            <span>{formatCurrency(local.valor_contestacao)}</span>
-            {co.requer_liberacao && (
-              <label className="fat-check">
-                <input
-                  type="checkbox"
-                  checked={liberacaoOk(local, 'contestacao')}
-                  onChange={(e) => onToggleLib('contestacao', e.target.checked)}
-                />
-                {co.responsavel_nome ?? 'Liberar'}
-              </label>
-            )}
-          </div>
-        ) : '—'}
-      </td>
-      <td>
-        {sw ? (
-          <input
-            type="number"
-            className="fat-input"
-            value={local.qtd_linhas_software ?? ''}
-            onChange={(e) => setNum('qtd_linhas_software', e.target.value)}
-            onBlur={() => blurSave({ qtd_linhas_software: local.qtd_linhas_software })}
-          />
-        ) : '—'}
-      </td>
-      <td>
-        {sw ? (
-          <div className="fat-cell-stack">
-            <span>{formatCurrency(local.valor_software)}</span>
-            {sw.requer_liberacao && (
-              <label className="fat-check">
-                <input
-                  type="checkbox"
-                  checked={liberacaoOk(local, 'software')}
-                  onChange={(e) => onToggleLib('software', e.target.checked)}
-                />
-                {sw.responsavel_nome ?? 'Liberar'}
-              </label>
-            )}
-          </div>
-        ) : '—'}
-      </td>
-      <td>{fx ? formatCurrency(local.valor_fixado) : '—'}</td>
-      <td>
-        <input
-          type="number"
-          className="fat-input"
-          value={local.outra_cobranca ?? ''}
-          onChange={(e) => setNum('outra_cobranca', e.target.value)}
-          onBlur={() => blurSave({ outra_cobranca: local.outra_cobranca })}
-        />
-      </td>
-      <td><strong>{formatCurrency(local.valor_total)}</strong></td>
-      <td>
-        <input
-          type="date"
-          className="fat-input fat-input-date"
-          value={toInputDate(local.data_vencimento)}
-          onChange={(e) => setLocal((l) => ({ ...l, data_vencimento: e.target.value || null }))}
-          onBlur={() => blurSave({ data_vencimento: local.data_vencimento })}
-          title={local.vcto_obrigatorio ? local.vcto_obrigatorio_explicacao ?? 'Vencimento manual' : 'Vencimento sugerido'}
-        />
-      </td>
-      <td className="fat-lib-cell">
-        {[aj, co, sw].filter(Boolean).map((s) => {
-          const cod = s!.codigo;
-          const ok = liberacaoOk(local, cod);
-          return (
-            <span key={cod} className={ok ? 'lib-ok' : 'lib-pend'}>
-              {cod.slice(0, 3)} {ok ? '✓' : '…'}
+    <Fragment>
+      <tr className={`${saving ? 'row-saving' : ''} ${local.prazo_emissao_vencido ? 'row-atrasado' : ''}`}>
+        <td>
+          <button type="button" className="btn-expand" onClick={onToggleExpand} aria-label="Detalhes">
+            {expanded ? '▼' : '▶'}
+          </button>
+        </td>
+        <td className="fat-cliente">
+          <strong>{local.razao_social}</strong>
+          <small>{local.cnpj ?? '—'}</small>
+          {local.prazo_emissao_vencido && <small className="fat-alert">Prazo emissão vencido</small>}
+          {local.solicitacao_id && (
+            <Link to="/solicitacoes" className="fat-link">Sol. #{local.solicitacao_id}</Link>
+          )}
+        </td>
+        <td>{servicoAtivo(local.servicos, 'call_center') ? formatCurrency(local.valor_call_center) : '—'}</td>
+        <td>{aj ? <input type="number" className="fat-input" disabled={disabled} value={local.base_ajuste ?? ''} onChange={(e) => setNum('base_ajuste', e.target.value)} onBlur={() => blurSave({ base_ajuste: local.base_ajuste })} /> : '—'}</td>
+        <td>{aj ? <LibCell row={local} codigo="ajuste" serv={aj} disabled={disabled} onToggleLib={onToggleLib} valor={local.valor_ajuste} /> : '—'}</td>
+        <td>{co ? <input type="number" className="fat-input" disabled={disabled} value={local.base_contestacao ?? ''} onChange={(e) => setNum('base_contestacao', e.target.value)} onBlur={() => blurSave({ base_contestacao: local.base_contestacao })} /> : '—'}</td>
+        <td>{co ? <LibCell row={local} codigo="contestacao" serv={co} disabled={disabled} onToggleLib={onToggleLib} valor={local.valor_contestacao} /> : '—'}</td>
+        <td>{sw ? <input type="number" className="fat-input" disabled={disabled} value={local.qtd_linhas_software ?? ''} onChange={(e) => setNum('qtd_linhas_software', e.target.value)} onBlur={() => blurSave({ qtd_linhas_software: local.qtd_linhas_software })} /> : '—'}</td>
+        <td>{sw ? <LibCell row={local} codigo="software" serv={sw} disabled={disabled} onToggleLib={onToggleLib} valor={local.valor_software} /> : '—'}</td>
+        <td>{servicoAtivo(local.servicos, 'vlr_fixado') ? formatCurrency(local.valor_fixado) : '—'}</td>
+        <td>
+          <input type="number" className="fat-input" disabled={disabled} value={local.outra_cobranca ?? ''} onChange={(e) => setNum('outra_cobranca', e.target.value)} onBlur={() => blurSave({ outra_cobranca: local.outra_cobranca })} />
+        </td>
+        <td><strong>{formatCurrency(local.valor_total)}</strong></td>
+        <td>
+          <input type="date" className="fat-input fat-input-date" disabled={disabled} value={toInputDate(local.data_vencimento)} onChange={(e) => setLocal((l) => ({ ...l, data_vencimento: e.target.value || null }))} onBlur={() => blurSave({ data_vencimento: local.data_vencimento })} />
+        </td>
+        <td className="fat-lib-cell">
+          {[aj, co, sw].filter(Boolean).map((s) => (
+            <span key={s!.codigo} className={liberacaoOk(local, s!.codigo) ? 'lib-ok' : 'lib-pend'}>
+              {s!.codigo.slice(0, 3)}
             </span>
-          );
-        })}
-      </td>
-      <td>
-        <span className={`badge ${statusClass}`}>
-          {STATUS_FATURAMENTO_LABELS[row.status as StatusFaturamento]}
-        </span>
-      </td>
-    </tr>
+          ))}
+        </td>
+        <td><span className={`badge ${statusClass}`}>{STATUS_FATURAMENTO_LABELS[row.status as StatusFaturamento]}</span></td>
+      </tr>
+      {expanded && (
+        <tr className="fat-detail-row">
+          <td colSpan={15}>
+            <div className="fat-detail-grid">
+              <div className="form-row">
+                <label>Motivo</label>
+                <input disabled={disabled} value={local.motivo ?? ''} onChange={(e) => setLocal({ ...local, motivo: e.target.value })} onBlur={() => blurSave({ motivo: local.motivo })} />
+              </div>
+              <div className="form-row">
+                <label>E-mail</label>
+                <input disabled={disabled} value={local.email_contato ?? ''} onChange={(e) => setLocal({ ...local, email_contato: e.target.value })} onBlur={() => blurSave({ email_contato: local.email_contato })} />
+              </div>
+              <div className="form-row">
+                <label>Tipo produto</label>
+                <input disabled={disabled} value={local.tipo_produto ?? ''} onChange={(e) => setLocal({ ...local, tipo_produto: e.target.value })} onBlur={() => blurSave({ tipo_produto: local.tipo_produto })} />
+              </div>
+              <div className="form-row">
+                <label>CNPJ emissor</label>
+                <input disabled={disabled} value={local.empresa_emissora ?? ''} onChange={(e) => setLocal({ ...local, empresa_emissora: e.target.value })} onBlur={() => blurSave({ empresa_emissora: local.empresa_emissora })} />
+              </div>
+              <div className="form-row form-row-full">
+                <label>Descrição outra cobrança</label>
+                <input disabled={disabled} value={local.outra_cobranca_descricao ?? ''} onChange={(e) => setLocal({ ...local, outra_cobranca_descricao: e.target.value })} onBlur={() => blurSave({ outra_cobranca_descricao: local.outra_cobranca_descricao })} />
+              </div>
+              <div className="form-row form-row-full">
+                <label>Observações</label>
+                <textarea disabled={disabled} rows={2} value={local.observacoes ?? ''} onChange={(e) => setLocal({ ...local, observacoes: e.target.value })} onBlur={() => blurSave({ observacoes: local.observacoes })} />
+              </div>
+              <label className="checkbox-label">
+                <input type="checkbox" disabled={disabled} checked={local.cliente_novo} onChange={(e) => { setLocal({ ...local, cliente_novo: e.target.checked }); blurSave({ cliente_novo: e.target.checked }); }} />
+                Cliente novo
+              </label>
+            </div>
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  );
+}
+
+function LibCell({ row, codigo, serv, disabled, onToggleLib, valor }: {
+  row: FaturamentoRow; codigo: string; serv: ClienteServico; disabled: boolean;
+  onToggleLib: (c: string, ok: boolean) => void; valor: number | null;
+}) {
+  return (
+    <div className="fat-cell-stack">
+      <span>{formatCurrency(valor)}</span>
+      {serv.requer_liberacao && (
+        <label className="fat-check">
+          <input type="checkbox" disabled={disabled} checked={liberacaoOk(row, codigo)} onChange={(e) => onToggleLib(codigo, e.target.checked)} />
+          {serv.responsavel_nome ?? 'OK'}
+        </label>
+      )}
+    </div>
   );
 }

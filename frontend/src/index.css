@@ -716,6 +716,131 @@ tbody tr.clickable {
   background: var(--bg);
 }
 
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 2rem;
+  text-align: center;
+}
+
+.login-card h1 {
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.login-form {
+  margin-top: 1.5rem;
+  text-align: left;
+}
+
+.btn-block {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.login-hint {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.sidebar-user {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 0.5rem;
+}
+
+.sidebar-logout {
+  margin-top: auto;
+  color: #94a3b8 !important;
+  justify-content: flex-start;
+}
+
+.alert-banner {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+}
+
+.alert-warn {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.alert-info {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+}
+
+.btn-sm {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+.row-atrasado {
+  background: #fffbeb;
+}
+
+.fat-detail-row td {
+  background: #f8fafc;
+  padding: 1rem !important;
+}
+
+.fat-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.fat-alert {
+  color: #b45309 !important;
+  font-weight: 600;
+}
+
+.fat-link {
+  font-size: 0.72rem;
+  color: var(--primary);
+}
+
+.btn-expand {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  color: var(--text-muted);
+}
+
+.colab-list {
+  list-style: none;
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.colab-list li {
+  background: var(--bg);
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+  .fat-table { min-width: 900px; font-size: 0.72rem; }
+  .filters-bar { flex-direction: column; align-items: stretch; }
+  .header-actions-row { flex-direction: column; }
+}
+
 @media (max-width: 768px) {
   .app-layout {
     grid-template-columns: 1fr;

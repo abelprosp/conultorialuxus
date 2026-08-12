@@ -8,6 +8,9 @@ import clientesRouter from './routes/clientes.js';
 import solicitacoesRouter from './routes/solicitacoes.js';
 import dashboardRouter from './routes/dashboard.js';
 import faturamentoRouter from './routes/faturamento.js';
+import authRouter from './routes/auth.js';
+import colaboradoresRouter from './routes/colaboradores.js';
+import { optionalAuth, requireAuth } from './middleware/auth.js';
 import { checkDbHealth } from './db.js';
 
 dotenv.config();
@@ -40,6 +43,7 @@ try {
 
   app.use(cors());
   app.use(express.json());
+  app.use(optionalAuth);
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', service: 'assessoria-cobrancas' });
@@ -74,10 +78,25 @@ try {
     });
   });
 
+  app.use('/api/auth', authRouter);
+
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/health') || req.path.startsWith('/api/auth/login')) {
+      next();
+      return;
+    }
+    if (req.path.startsWith('/api/')) {
+      requireAuth(req, res, next);
+      return;
+    }
+    next();
+  });
+
   app.use('/api/clientes', clientesRouter);
   app.use('/api/solicitacoes', solicitacoesRouter);
   app.use('/api/dashboard', dashboardRouter);
   app.use('/api/faturamento', faturamentoRouter);
+  app.use('/api/colaboradores', colaboradoresRouter);
 
   if (process.env.NODE_ENV === 'production') {
     const frontendDist = path.resolve(__dirname, '../../frontend/dist');

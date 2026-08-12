@@ -268,6 +268,35 @@ export async function upsertClienteServicos(
   }
 }
 
+export async function getCompetencia(ano: number, mes: number) {
+  const r = await query<{ id: number; status: string; fechada_em: string | null }>(
+    'SELECT id, status, fechada_em FROM competencias WHERE ano = $1 AND mes = $2',
+    [ano, mes]
+  );
+  return r.rows[0] ?? null;
+}
+
+export async function assertCompetenciaAberta(competenciaId: number): Promise<void> {
+  const r = await query<{ status: string }>(
+    'SELECT status FROM competencias WHERE id = $1',
+    [competenciaId]
+  );
+  if (r.rows[0]?.status === 'fechada') {
+    throw new Error('COMPETENCIA_FECHADA');
+  }
+}
+
+export function isPrazoEmissaoVencido(
+  diaLimite: number | null | undefined,
+  ano: number,
+  mes: number
+): boolean {
+  if (!diaLimite) return false;
+  const now = new Date();
+  if (now.getFullYear() !== ano || now.getMonth() + 1 !== mes) return false;
+  return now.getDate() > diaLimite;
+}
+
 export async function upsertClienteConfigExtended(
   clienteId: number,
   data: {

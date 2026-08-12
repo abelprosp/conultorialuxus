@@ -62,6 +62,18 @@ export interface DashboardStats {
   cancelados: number;
   por_produto: { produto: string; total: number }[];
   por_solicitante: { solicitante: string; total: number }[];
+  por_categoria?: { categoria: string; descricao: string; total: number }[];
+  mensal?: {
+    ano: number;
+    mes: number;
+    total_clientes: number;
+    prontos: number;
+    aguardando_liberacao: number;
+    rascunho: number;
+    valor_total_prontos: number;
+    liberacoes_pendentes: number;
+    prazo_emissao_vencido: number;
+  };
 }
 
 export interface FiltrosSolicitacao {

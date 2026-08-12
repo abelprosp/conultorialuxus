@@ -30,6 +30,7 @@ services:
       PGUSER: ${POSTGRES_USER:-assessoria}
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: assessoria_cobrancas
+      JWT_SECRET: ${JWT_SECRET:-troque-em-producao}
     depends_on:
       postgres:
         condition: service_healthy
