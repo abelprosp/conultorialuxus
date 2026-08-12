@@ -12,6 +12,7 @@ export default function Layout() {
           <NavLink to="/" end>
             Dashboard
           </NavLink>
+          <NavLink to="/faturamento">Cobrança mensal</NavLink>
           <NavLink to="/solicitacoes">Solicitações</NavLink>
           <NavLink to="/clientes">Clientes</NavLink>
         </nav>

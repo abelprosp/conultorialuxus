@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, formatCurrency, formatDate, formatDateTime, STATUS_LABELS } from '../api';
+import ClienteFormModal from '../components/ClienteFormModal';
 import NovaSolicitacaoModal from '../components/NovaSolicitacaoModal';
+import { SERVICO_LABELS } from '../types';
 import type { Cliente, Solicitacao, StatusCobranca } from '../types';
 
 export default function ClienteDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [cliente, setCliente] = useState<(Cliente & { solicitacoes: Solicitacao[]; observacoes_padrao?: string }) | null>(null);
+  const [cliente, setCliente] = useState<(Cliente & { solicitacoes: Solicitacao[] }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showNova, setShowNova] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -58,12 +61,32 @@ export default function ClienteDetailPage() {
           <p>{cliente.cnpj ?? 'CNPJ não informado'}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn btn-secondary" onClick={() => setShowEdit(true)}>
+            Editar cadastro
+          </button>
           <button className="btn btn-primary" onClick={() => setShowNova(true)}>
             + Nova solicitação
           </button>
           <Link to="/clientes" className="btn btn-ghost">← Voltar</Link>
         </div>
       </div>
+
+      {cliente.servicos && cliente.servicos.some((s) => s.ativo) && (
+        <div className="card" style={{ marginBottom: '1rem', padding: '1rem 1.25rem' }}>
+          <strong>Serviços contratados</strong>
+          <div className="servicos-tags" style={{ marginTop: '0.75rem' }}>
+            {cliente.servicos.filter((s) => s.ativo).map((s) => (
+              <span key={s.codigo} className="badge badge-produto">
+                {SERVICO_LABELS[s.codigo] ?? s.nome}
+                {s.valor_fixo != null && ` — ${s.valor_fixo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`}
+                {s.percentual != null && ` — ${s.percentual}%`}
+                {s.valor_por_linha != null && ` — R$ ${s.valor_por_linha}/linha`}
+                {s.responsavel_nome && ` (${s.responsavel_nome})`}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="client-info-grid">
         <div className="info-item card" style={{ padding: '1rem' }}>
@@ -146,6 +169,14 @@ export default function ClienteDetailPage() {
           empresaEmissora: cliente.empresa_emissora ?? undefined,
           emailContato: cliente.email_contato ?? undefined,
         }}
+      />
+
+      <ClienteFormModal
+        open={showEdit}
+        title="Editar cliente"
+        clienteId={cliente.id}
+        onClose={() => setShowEdit(false)}
+        onSuccess={load}
       />
     </>
   );

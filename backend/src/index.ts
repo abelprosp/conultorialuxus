@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import clientesRouter from './routes/clientes.js';
 import solicitacoesRouter from './routes/solicitacoes.js';
 import dashboardRouter from './routes/dashboard.js';
+import faturamentoRouter from './routes/faturamento.js';
 import { checkDbHealth } from './db.js';
 
 dotenv.config();
@@ -76,6 +77,7 @@ try {
   app.use('/api/clientes', clientesRouter);
   app.use('/api/solicitacoes', solicitacoesRouter);
   app.use('/api/dashboard', dashboardRouter);
+  app.use('/api/faturamento', faturamentoRouter);
 
   if (process.env.NODE_ENV === 'production') {
     const frontendDist = path.resolve(__dirname, '../../frontend/dist');

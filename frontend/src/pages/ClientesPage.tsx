@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
-import NovoClienteModal from '../components/NovoClienteModal';
+import ClienteFormModal from '../components/ClienteFormModal';
 import type { Cliente } from '../types';
 
 export default function ClientesPage() {
@@ -109,8 +109,9 @@ export default function ClientesPage() {
         )}
       </div>
 
-      <NovoClienteModal
+      <ClienteFormModal
         open={showNovo}
+        title="Novo cliente"
         onClose={() => setShowNovo(false)}
         onSuccess={load}
       />

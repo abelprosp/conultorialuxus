@@ -1,16 +1,17 @@
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { assertDatabaseUrl, closePool, getPool, resolveDatabaseUrl } from '../db.js';
 import { logDbError } from '../utils/db-error.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const MIGRATIONS_DIR = resolve(__dirname, '../../migrations');
 
 const MAX_ATTEMPTS = 30;
 const RETRY_DELAY_MS = 2_000;
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
 
 async function waitForDb(): Promise<void> {
@@ -38,6 +39,13 @@ async function verifySchema(): Promise<boolean> {
   return result.rows[0]?.clientes !== null;
 }
 
+function listMigrationFiles(): string[] {
+  return readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .map((f) => resolve(MIGRATIONS_DIR, f));
+}
+
 export async function runMigration(): Promise<void> {
   const dbHost = resolveDatabaseUrl()?.match(/@([^:/]+)/)?.[1] ?? 'unknown';
 
@@ -49,18 +57,28 @@ export async function runMigration(): Promise<void> {
 
   await waitForDb();
 
-  const schemaPath = resolve(__dirname, '../../migrations/001_schema.sql');
-  const sql = readFileSync(schemaPath, 'utf-8');
-
-  console.log(`[migrate] Executando ${schemaPath}...`);
-  await getPool().query(sql);
+  const files = listMigrationFiles();
+  for (const schemaPath of files) {
+    const sql = readFileSync(schemaPath, 'utf-8');
+    console.log(`[migrate] Executando ${schemaPath}...`);
+    try {
+      await getPool().query(sql);
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === '42710' && schemaPath.endsWith('001_schema.sql')) {
+        console.log('[migrate] 001 já aplicada (tipos/tabelas existentes) — continuando');
+        continue;
+      }
+      throw err;
+    }
+  }
 
   const ready = await verifySchema();
   if (!ready) {
     throw new Error('Migration executou mas tabela public.clientes não existe');
   }
 
-  console.log('[migrate] Migration concluída — schema verificado.');
+  console.log('[migrate] Migrations concluídas — schema verificado.');
 }
 
 async function main() {
